@@ -29,7 +29,7 @@
 |---|---|
 | `index.html` / `css/style.css` | 画面 |
 | `js/app.js` | 全体をつなぐ。設定画面（停車中のみ） |
-| `js/voice.js` | 音声認識・読み上げ。聞き取りの開始は一か所だけ（二重起動しない）。読み上げ中は止め、終わってから再開。aborted・audio-capture は少し待って1回だけ再開 |
+| `js/voice.js` | 音声認識・読み上げ。聞き取りの部品は開始ボタンの操作の中で一つだけ作って使い回す。開始は一か所だけ（二重起動しない）。読み上げ中は止め、終わってから再開。aborted・audio-capture は少し待って1回だけ再開。止める・始めるたびに理由を記録 |
 | `js/commands.js` | 話した言葉を指示に変える |
 | `js/dialog.js` | 会話の流れ（確認・一問一答の聞き返し・3件ずつの候補） |
 | `js/nav.js` | Googleマップ（アプリ）→ 開けなければAppleマップ |
@@ -47,6 +47,6 @@ python -m http.server 8765
 ```
 
 - 本体：http://localhost:8765/ （パソコンのChromeかEdgeなら音声認識も試せる）
-- 試験：http://localhost:8765/tests/ （「99件中 99件 合格」と出れば合格）
+- 試験：http://localhost:8765/tests/ （「108件中 108件 合格」と出れば合格）
 
 iPhone・iPadのSafariでマイクを使うにはHTTPSが必要なため、実機での試験は GitHub Pages の公開アドレス（https://hideki0629-star.github.io/car-navi-prototype/）で行う。

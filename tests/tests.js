@@ -6,6 +6,7 @@ import { Conversation } from '../js/dialog.js';
 import { canonicalName } from '../js/favorites.js';
 import { googleAppUrl, googleWebUrl, appleUrl } from '../js/nav.js';
 import { voiceTests } from './voice-tests.js';
+import { estimateSpeed } from '../js/location.js';
 
 const results = [];
 function check(name, actual, expected) {
@@ -61,6 +62,16 @@ check('Googleアプリ：経由地つき', googleAppUrl({ text: '東京駅' }, [
 check('GoogleURL：座標', googleWebUrl({ lat: 35.5, lon: 135.5 }, []).includes('destination=35.5%2C135.5'), true);
 check('GoogleURL：経由地', googleWebUrl({ text: 'B' }, [{ text: 'A1' }, { text: 'A2' }]).includes('waypoints=A1%7CA2'), true);
 check('Appleマップ：目的地', appleUrl({ text: '自宅' }), 'https://maps.apple.com/?daddr=%E8%87%AA%E5%AE%85&dirflg=d');
+
+// ---- 停車中の判断 ----
+
+{
+  const p = (lat, time, accuracy) => ({ lat, lon: 135, time, accuracy });
+  // 緯度0.0001度はおよそ11メートル
+  check('停車：GPSの揺れ（誤差の範囲内）は止まっているとみなす', estimateSpeed(p(35, 0, 15), p(35.0001, 1000, 15)), 0);
+  check('停車：誤差を超えて動けば速さを出す', estimateSpeed(p(35, 0, 5), p(35.0003, 1000, 5)) * 3.6 > 5, true);
+  check('停車：1点だけでは不明', estimateSpeed(null, p(35, 0, 5)), null);
+}
 
 // ---- 会話の流れ ----
 

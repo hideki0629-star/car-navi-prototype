@@ -13,8 +13,8 @@ export function startWatching() {
       const now = { lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy, time: pos.timestamp, speed: null };
       if (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0) {
         now.speed = pos.coords.speed;
-      } else if (last && now.time > last.time) {
-        now.speed = distanceMeters(last, now) / ((now.time - last.time) / 1000);
+      } else {
+        now.speed = estimateSpeed(last, now);
       }
       last = now;
     },
@@ -40,6 +40,17 @@ export function currentPosition() {
 export function isStopped(limitKmh) {
   if (!last || Date.now() - last.time > STALE_MS || last.speed === null) return null;
   return last.speed * 3.6 < limitKmh;
+}
+
+// 続けて取った2点から速さ（m/s）を見積もる。わからなければ null。
+// 止まっていてもGPSの位置は数メートル〜数十メートル揺れるため、
+// 動いた距離が位置の誤差（accuracy）の範囲内なら、止まっている（0）とみなす。
+export function estimateSpeed(prev, now) {
+  if (!prev || !(now.time > prev.time)) return null;
+  const meters = distanceMeters(prev, now);
+  const noise = Math.max(prev.accuracy || 0, now.accuracy || 0);
+  if (meters <= noise) return 0;
+  return (meters - noise) / ((now.time - prev.time) / 1000);
 }
 
 export function distanceMeters(a, b) {
