@@ -29,14 +29,14 @@
 |---|---|
 | `index.html` / `css/style.css` | 画面 |
 | `js/app.js` | 全体をつなぐ。設定画面（停車中のみ） |
-| `js/voice.js` | 音声認識・読み上げ。止まったら自動で再開、読み上げ中は聞き取りを止める |
+| `js/voice.js` | 音声認識・読み上げ。聞き取りの開始は一か所だけ（二重起動しない）。読み上げ中は止め、終わってから再開。aborted・audio-capture は少し待って1回だけ再開 |
 | `js/commands.js` | 話した言葉を指示に変える |
 | `js/dialog.js` | 会話の流れ（確認・一問一答の聞き返し・3件ずつの候補） |
 | `js/nav.js` | Googleマップ（アプリ）→ 開けなければAppleマップ |
 | `js/favorites.js` | お気に入り（ブラウザ内にだけ保存） |
 | `js/places.js` | 場所の検索（OpenStreetMap：Overpass と Nominatim。無料・キー不要）。Googleへの差し替えはこのファイルだけで行える |
 | `js/location.js` | 現在地と、停車中かどうか（時速5km未満を停車中とみなす） |
-| `tests/` | 言葉の解釈と会話の流れの試験（外部への通信なし） |
+| `tests/` | 言葉の解釈・会話の流れ・聞き取りの再開の試験（外部への通信なし） |
 
 外部へ送るのは、場所の検索のための言葉と緯度・経度だけ（OpenStreetMapの検索サービスへ）。お気に入りはこの端末のブラウザ内にだけ保存し、外部へは送りません。
 
@@ -47,6 +47,6 @@ python -m http.server 8765
 ```
 
 - 本体：http://localhost:8765/ （パソコンのChromeかEdgeなら音声認識も試せる）
-- 試験：http://localhost:8765/tests/ （「64件中 64件 合格」と出れば合格）
+- 試験：http://localhost:8765/tests/ （「85件中 85件 合格」と出れば合格）
 
 iPhone・iPadのSafariでマイクを使うにはHTTPSが必要なため、実機での試験は GitHub Pages の公開アドレス（https://hideki0629-star.github.io/car-navi-prototype/）で行う。

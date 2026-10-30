@@ -5,6 +5,7 @@ import { parse, extractFilters, parseChoice } from '../js/commands.js';
 import { Conversation } from '../js/dialog.js';
 import { canonicalName } from '../js/favorites.js';
 import { googleAppUrl, googleWebUrl, appleUrl } from '../js/nav.js';
+import { voiceTests } from './voice-tests.js';
 
 const results = [];
 function check(name, actual, expected) {
@@ -220,6 +221,7 @@ async function flows() {
 }
 
 await flows();
+await voiceTests(check);
 
 const failed = results.filter((r) => !r.ok);
 document.getElementById('summary').textContent = `${results.length}件中 ${results.length - failed.length}件 合格、${failed.length}件 不合格`;

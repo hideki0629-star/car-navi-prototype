@@ -95,13 +95,22 @@ $('stop').addEventListener('click', () => {
   $('resume').hidden = false;
 });
 
-// 地図アプリなどから戻ったとき：聞き取りと画面ロック防止をやり直す
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  log('画面に戻りました');
-  voice.resume();
-  if (!$('main').hidden) keepAwake();
-});
+// 画面が裏に回ったら聞き取りを止め、地図アプリなどから本当に戻ったときだけ再開する
+// （iPhoneでは裏に回っていなくても「表示」の知らせが来ることがあるため、その場合は何もしない）
+function onVisibility() {
+  const visible = document.visibilityState === 'visible';
+  if (!visible) {
+    voice.setVisible(false);
+    return;
+  }
+  if (voice.setVisible(true)) {
+    log('画面に戻りました');
+    if (!$('main').hidden) keepAwake();
+  }
+}
+document.addEventListener('visibilitychange', onVisibility);
+window.addEventListener('pagehide', () => voice.setVisible(false));
+window.addEventListener('pageshow', onVisibility);
 
 // ---- 設定（停車中だけ） ----
 function settingsAllowed() {
