@@ -20,7 +20,7 @@ const MIN_SPEECH = 0.25;     // VAD が声とみなすまでの長さ（秒）
 const PAD_BEFORE = 0.8;
 const PAD_AFTER = 0.3;
 const PARTIAL_STEP = 0.4;    // 途中の文字を出す間隔（秒、音の長さで数える）。計算が遅ければ広げる
-const MAX_RECORD_SEC = 60;
+const MAX_RECORD_SEC = 60;  // 手元に残す音の上限（秒）
 const RUNTIME_TIMEOUT_MS = 180000;
 
 const post = (msg) => self.postMessage(msg);
@@ -161,35 +161,46 @@ async function load() {
 }
 
 // ---- 聞き取り ----
+// 開始のあとは聞き続ける。一つの話が終わるたびに最終の文字を返し、次の話を待つ。
+// 読み上げの間は画面側から pause が来る（自分の声を聞き取らないため）。resume で、状態を消してから再開する。
 let listening = false;
-const fed = new Float32Array(MAX_RECORD_SEC * SAMPLE_RATE); // VAD に渡した音を、渡した順に残す
+// VAD に渡した音を、渡した順に残す。位置は VAD と同じく「聞き取り開始からの通し番号」で数え、
+// fed[0] が通し番号 fedBase にあたる。話していない間に古い音を捨てて、長く聞き続けられるようにする
+const fed = new Float32Array(MAX_RECORD_SEC * SAMPLE_RATE);
+let fedBase = 0;
 let fedLength = 0;
-let speech = null; // 話している間の状態 { onset, detectedAt, lastPartialEnd, step, partials, firstPartialMs }
+const KEEP_SEC = 2;          // 古い音を捨てるとき、直前の何秒を残すか（話し始めの余白に使う）
+const COMPACT_SEC = 20;      // これだけたまったら古い音を捨てる
+// 話している間の状態 { onset, speechStartWall, lastPartialEnd, step, partials, firstTextMs }
+let speech = null;
+
+const fedEnd = () => fedBase + fedLength; // 今まで渡した音の通し番号の終わり
 
 function decode(from, to) {
   const { recognizer } = engine;
   const started = performance.now();
   const stream = recognizer.createStream();
-  stream.acceptWaveform(SAMPLE_RATE, fed.slice(from, to));
+  stream.acceptWaveform(SAMPLE_RATE, fed.slice(Math.max(0, from - fedBase), Math.max(0, to - fedBase)));
   recognizer.decode(stream);
   const text = (recognizer.getResult(stream).text || '').trim();
   stream.free();
   return { text, ms: performance.now() - started };
 }
 
-function startListening() {
+function resetListening() {
   engine.vad.reset();
   engine.buffer.reset();
+  fedBase = 0;
   fedLength = 0;
   speech = null;
-  listening = true;
 }
 
-function stopListening(reason) {
-  if (!listening) return;
-  listening = false;
-  speech = null;
-  post({ type: 'stopped', reason });
+function compactIfNeeded() {
+  if (speech || fedLength < COMPACT_SEC * SAMPLE_RATE) return;
+  const keep = KEEP_SEC * SAMPLE_RATE;
+  fed.copyWithin(0, fedLength - keep, fedLength);
+  fedBase += fedLength - keep;
+  fedLength = keep;
 }
 
 // capturedAt：この音を画面側が受け取った時刻（Date.now()）
@@ -203,7 +214,9 @@ function onAudio(samples, capturedAt) {
     vad.acceptWaveform(s);
     buffer.pop(win);
     if (fedLength + s.length > fed.length) {
-      stopListening(`${MAX_RECORD_SEC}秒を超えたため`);
+      // 一つの話が長すぎる（VAD は20秒で区切るので、ふつうは来ない）。状態を消してやり直す
+      log(`聞き取り：一つの話が${MAX_RECORD_SEC}秒を超えたため、やり直します`);
+      resetListening();
       return;
     }
     fed.set(s, fedLength);
@@ -211,8 +224,9 @@ function onAudio(samples, capturedAt) {
 
     if (vad.isDetected() && !speech) {
       // 声を検出した。VAD が声とみなすまでの分だけ、話し始めは少し前にある
-      const onset = Math.max(0, fedLength - Math.round((MIN_SPEECH + win / SAMPLE_RATE + 0.1) * SAMPLE_RATE));
-      speech = { onset, detectedAt: Date.now(), lastPartialEnd: fedLength, step: PARTIAL_STEP, partials: 0, firstPartialMs: null };
+      const lead = MIN_SPEECH + win / SAMPLE_RATE;
+      const onset = Math.max(fedBase, fedEnd() - Math.round((lead + 0.1) * SAMPLE_RATE));
+      speech = { onset, speechStartWall: capturedAt - lead * 1000, lastPartialEnd: fedEnd(), step: PARTIAL_STEP, partials: 0, firstTextMs: null };
       post({ type: 'detected' });
     }
 
@@ -220,12 +234,18 @@ function onAudio(samples, capturedAt) {
       const segment = vad.front();
       vad.pop();
       const spokenSec = segment.samples.length / SAMPLE_RATE;
-      const from = Math.max(0, segment.start - Math.round(PAD_BEFORE * SAMPLE_RATE));
-      const to = Math.min(fedLength, segment.start + segment.samples.length + Math.round(PAD_AFTER * SAMPLE_RATE));
+      const from = Math.max(fedBase, segment.start - Math.round(PAD_BEFORE * SAMPLE_RATE));
+      const to = Math.min(fedEnd(), segment.start + segment.samples.length + Math.round(PAD_AFTER * SAMPLE_RATE));
       const r = decode(from, to);
       // 話し終わり ≒ この音を受け取った時刻 − 無音の判定待ち。そこから最終の文字が出るまで
       const sinceCapture = Date.now() - capturedAt;
       const info = speech || {};
+      let firstTextMs = info.firstTextMs;
+      let firstTextFromFinal = false;
+      if ((firstTextMs === null || firstTextMs === undefined) && r.text && info.speechStartWall) {
+        firstTextMs = Date.now() - info.speechStartWall; // 途中の文字が出る前に話し終わった
+        firstTextFromFinal = true;
+      }
       post({
         type: 'final',
         text: r.text,
@@ -234,27 +254,29 @@ function onAudio(samples, capturedAt) {
         totalMs: MIN_SILENCE * 1000 + sinceCapture,
         spokenSec,
         partials: info.partials || 0,
-        firstPartialMs: info.firstPartialMs,
+        firstTextMs: firstTextMs === undefined ? null : firstTextMs,
+        firstTextFromFinal,
       });
-      speech = null;
-      if (r.text) {
-        stopListening('最終の文字が確定したため');
-        return;
-      }
+      speech = null; // 次の話を待つ
     }
   }
 
   // 話している途中：前回から一定の長さの音が増えたら、話し始めから今までを認識し直して途中の文字を返す
-  if (speech && fedLength - speech.lastPartialEnd >= speech.step * SAMPLE_RATE) {
-    const from = Math.max(0, speech.onset - Math.round(PAD_BEFORE * SAMPLE_RATE));
-    const r = decode(from, fedLength);
-    speech.lastPartialEnd = fedLength;
+  if (speech && fedEnd() - speech.lastPartialEnd >= speech.step * SAMPLE_RATE) {
+    const from = Math.max(fedBase, speech.onset - Math.round(PAD_BEFORE * SAMPLE_RATE));
+    const r = decode(from, fedEnd());
+    speech.lastPartialEnd = fedEnd();
     speech.partials += 1;
-    if (speech.firstPartialMs === null) speech.firstPartialMs = Date.now() - speech.detectedAt;
+    let firstTextMs = null;
+    if (r.text && speech.firstTextMs === null) {
+      speech.firstTextMs = Date.now() - speech.speechStartWall;
+      firstTextMs = speech.firstTextMs;
+    }
     // 計算が音の増え方に追いつかないときは、間隔を広げる（遅れがたまらないように）
     speech.step = Math.max(PARTIAL_STEP, (r.ms / 1000) * 1.5);
-    post({ type: 'partial', text: r.text, decodeMs: r.ms, audioSec: (fedLength - from) / SAMPLE_RATE, step: speech.step });
+    post({ type: 'partial', text: r.text, decodeMs: r.ms, audioSec: (fedEnd() - from) / SAMPLE_RATE, step: speech.step, firstTextMs });
   }
+  compactIfNeeded();
 }
 
 self.onmessage = async (e) => {
@@ -263,15 +285,17 @@ self.onmessage = async (e) => {
     if (msg.type === 'load') {
       if (!engine) await load();
       post({ type: 'ready' });
-    } else if (msg.type === 'start') {
-      startListening();
-    } else if (msg.type === 'stop') {
-      stopListening(msg.reason || '画面から止めたため');
+    } else if (msg.type === 'resume') {
+      resetListening();
+      listening = true;
+    } else if (msg.type === 'pause') {
+      listening = false;
+      speech = null;
     } else if (msg.type === 'audio') {
       onAudio(msg.samples, msg.capturedAt);
     }
   } catch (err) {
-    log(`聞き取り：${err.name || 'Error'}：${err.message}`, true);
+    log(`聞き取り：${err.name || 'Error'}：${err.message}\n${err.stack || ''}`, true);
     if (msg.type === 'load') post({ type: 'failed', message: err.message });
   }
 };

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- このページは同じサイト（自分の公開ページ）以外とは通信しない。音声や文字を端末の外へ送れないようにする。
-       インラインのスクリプトは、下の import map（ハッシュで指定）だけを許す -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' 'sha256-swb6Oraj5TDxqayZ7II90ZPbGkvsjyOIkPCcqbBmJn4='; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:">
+  <!-- 通信してよい相手は、自分の公開ページと、声のモデルの配布元（huggingface.co と *.hf.co）だけ。
+       音声や文字はどこへも送らない。インラインのスクリプトは、下の import map（ハッシュで指定）だけを許す -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' 'sha256-swb6Oraj5TDxqayZ7II90ZPbGkvsjyOIkPCcqbBmJn4='; connect-src 'self' https://huggingface.co https://*.hf.co; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:">
   <title>端末内の音声 試作</title>
   <script type="importmap">{"imports":{"@piper-plus/g2p":"./vendor/piper-plus-g2p/src/index.js"}}</script>
   <style>
@@ -13,13 +13,14 @@
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
     html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif; -webkit-text-size-adjust: 100%; }
-    main { max-width: 760px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+    main, .intro { max-width: 760px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
     h1 { font-size: 22px; margin: 8px 0 4px; }
     .note { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
-    button.big { width: 100%; font: inherit; font-size: 24px; font-weight: 700; padding: 22px 16px; border: none; border-radius: 16px; background: var(--accent); color: #fff; cursor: pointer; }
+    button.big { width: 100%; font: inherit; font-size: 22px; font-weight: 700; padding: 18px 16px; border: none; border-radius: 16px; background: var(--accent); color: #fff; cursor: pointer; margin-top: 10px; }
     button.big:disabled { background: var(--line); color: var(--muted); cursor: default; }
-    button.big.listening { background: var(--ok); }
-    .status { font-size: 18px; font-weight: 700; margin: 12px 0 4px; min-height: 1.4em; }
+    button.start { font-size: 40px; padding: 48px 16px; background: var(--ok); }
+    button.beep { background: var(--warn); color: #000; }
+    .status { font-size: 17px; font-weight: 700; margin: 10px 0 4px; min-height: 1.4em; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 12px 0; }
     .card h2 { font-size: 15px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
     .result { font-size: 28px; font-weight: 700; min-height: 1.3em; overflow-wrap: anywhere; }
@@ -27,61 +28,60 @@
     .metrics { font-size: 15px; line-height: 1.7; margin-top: 6px; }
     .progress { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin-top: 8px; }
     .progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
-    pre.log { font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; margin: 0; color: #cfd3d7; }
+    pre.log { font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 460px; overflow: auto; margin: 0; color: #cfd3d7; }
     .log .ng { color: var(--ng); }
     .small { font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: #000; color: var(--fg); cursor: pointer; }
-    .file { display: block; margin-top: 8px; font-size: 15px; }
     a { color: #90caf9; }
   </style>
 </head>
 <body>
-  <main>
+  <div class="intro">
     <h1>端末内の音声 試作</h1>
     <p class="note">
-      聞き取りも読み上げも、この端末の中だけで行います。音声も文字も端末の外へは送りません
-      （このページは、自分の公開ページ以外と通信できない設定です）。
-      モデルの読み込みは、ボタンを初めて押したときだけです（聞き取り 約183 MB、読み上げ 約75 MB）。モバイル通信のときはご注意ください。
+      聞き取りも読み上げも、この端末の中で計算します。音声も文字も端末の外へは送りません。
+      外へ通信するのは、読み上げの声のモデル（つくよみちゃん、39.7 MB）を配布元からダウンロードするときだけです。
+      初回は合計 約300 MB を読み込みます（読み上げ 約115 MB → 聞き取り 約183 MB の順）。Wi-Fi でお試しください。
     </p>
+    <button id="start" class="big start" type="button">開始</button>
+    <p class="note">iPhoneのSafariは画面に一度触れないと、マイクも音も使えません。一度押せば、あとは聞き取りがずっと続きます。</p>
+  </div>
+
+  <main id="main" hidden>
+    <div class="card">
+      <h2>読み上げ（音が出るかの確認）</h2>
+      <button id="beep" class="big beep" type="button" disabled>確認音を鳴らす（モデルを使わない）</button>
+      <button id="tts-fixed" class="big" type="button" disabled>「福岡駅まで案内します」を読み上げる</button>
+      <button id="tts-heard" class="big" type="button" disabled>聞き取った文字を読み上げる</button>
+      <div id="tts-status" class="status">準備中…</div>
+      <div id="tts-progress" class="progress" hidden><div></div></div>
+      <p class="note">音が出ないときは、音量と、マナーモードを確かめてください。確認音が鳴って読み上げが鳴らないときは、記録の「音の大きさ」を見てください。</p>
+    </div>
 
     <div class="card">
-      <h2>聞き取りの試験（話している途中から文字を出します）</h2>
-      <button id="asr" class="big" type="button">聞き取りの試験</button>
-      <div id="asr-status" class="status">ボタンを押してください</div>
+      <h2>聞き取り（話している途中から文字が出ます）</h2>
+      <div id="asr-status" class="status">準備中…（読み上げの準備のあとに始まります）</div>
       <div id="asr-progress" class="progress" hidden><div></div></div>
       <div id="result" class="result">―</div>
       <div id="metrics" class="metrics"></div>
     </div>
 
     <div class="card">
-      <h2>読み上げの試験（「福岡駅まで案内します」と読み上げます）</h2>
-      <button id="tts" class="big" type="button">読み上げの試験</button>
-      <div id="tts-status" class="status">ボタンを押してください</div>
-      <div id="tts-model-state" class="note"></div>
-      <label class="file">声のモデルを選ぶ（tsukuyomi-chan-6lang-fp16.onnx と config.json の2つを一緒に選ぶ）
-        <input id="tts-files" type="file" multiple>
-      </label>
-      <p class="note">
-        声のモデル「つくよみちゃん」は試験用で、このページには置いていません。端末に保存したファイルを選ぶと、
-        この端末のブラウザの中にだけ保存されます。配布元：Hugging Face の ayousanz/piper-plus-tsukuyomi-chan。
-        マナーモードでも鳴るようにしていますが、音が出ないときは音量とマナーモードを確かめてください。
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>記録（新しい順） <button id="copy" class="small" type="button">記録をコピー</button></h2>
-      <pre id="log" class="log"></pre>
-    </div>
-
-    <div class="card">
       <h2>使っているもの</h2>
       <p class="note">
         聞き取り：sherpa-onnx v1.12.0（Apache-2.0）、音声認識モデル reazonspeech-k2-v2（Apache-2.0）、音声区間の検出 silero-vad（MIT）。
-        読み上げ：piper-plus 0.8.2・@piper-plus/g2p 0.4.2（MIT、日本語の辞書 NAIST-JDIC を含む）、onnxruntime-web 1.30.0（MIT）、
-        声のモデル つくよみちゃん（つくよみちゃんコーパス（CV.夢前黎）を使用。この端末の中だけで試験に使う）。
+        読み上げ：piper-plus 0.8.2・@piper-plus/g2p 0.4.2（MIT、日本語の辞書 NAIST-JDIC を含む）、onnxruntime-web 1.30.0（MIT）。
+        声のモデル：つくよみちゃん（つくよみちゃんコーパス（CV.夢前黎）を使用）。試験用で、このページには置いていません。
         詳しくは <a href="README.md">README.md</a>。
       </p>
     </div>
   </main>
+
+  <div class="intro">
+    <div class="card">
+      <h2>記録（新しい順） <button id="copy" class="small" type="button">記録をコピー</button></h2>
+      <pre id="log" class="log"></pre>
+    </div>
+  </div>
   <script type="module" src="lab.js"></script>
 </body>
 </html>
