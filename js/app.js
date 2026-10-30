@@ -66,8 +66,16 @@ async function keepAwake() {
 }
 
 // ---- 開始・停止 ----
+// 開始は1回だけ。二重押しや、隠れる前に重なって届いた押下は無視する（再開は「再開」ボタンで行う）
+let started = false;
 $('start').addEventListener('click', async () => {
+  if (started) {
+    log('開始ボタン：開始済みのため無視');
+    return;
+  }
+  started = true;
   $('start').hidden = true;
+  $('start').disabled = true;
   $('main').hidden = false;
   location.startWatching();
   keepAwake();
@@ -83,6 +91,7 @@ $('start').addEventListener('click', async () => {
 });
 
 $('resume').addEventListener('click', () => {
+  if (voice.active) return; // 聞き取りが動いているときは何もしない
   $('resume').hidden = true;
   voice.start();
   setStatus('聞き取り中');

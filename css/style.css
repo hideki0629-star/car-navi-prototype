@@ -13,6 +13,10 @@
 
 * { box-sizing: border-box; }
 
+/* hidden の指定を、display: flex などより必ず優先する。
+   これが無いと、開始後も開始ボタンが画面を覆ったまま残り、触れるたびに開始が走っていた */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;

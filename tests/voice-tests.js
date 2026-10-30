@@ -4,10 +4,10 @@
 import { Voice } from '../js/voice.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const TIMING = { restartMs: 5, errorRetryMs: 40, abortWaitMs: 60, speakGuardMs: 300, speakPerCharMs: 0 };
+const TIMING = { restartMs: 5, errorRetryMs: 40, abortWaitMs: 60, sessionMaxMs: 400, speakGuardMs: 300, speakPerCharMs: 0 };
 
 function makeFakes() {
-  const env = { sessions: [], running: 0, overlaps: 0, spoken: [], micDuringSpeech: 0, synthSpeaking: false };
+  const env = { sessions: [], running: 0, overlaps: 0, aborts: 0, silentAbort: false, spoken: [], micDuringSpeech: 0, synthSpeaking: false };
 
   class FakeRecognition {
     constructor() {
@@ -26,7 +26,19 @@ function makeFakes() {
     }
     abort() {
       if (this.state !== 'running') return;
-      setTimeout(() => this.finish('aborted'), 2);
+      env.aborts += 1;
+      if (env.silentAbort) {
+        // iPhoneで起こりうる：マイクは離すが、onerror も onend も来ない
+        this.state = 'ended';
+        env.running -= 1;
+        return;
+      }
+      // 止まるまでに少し時間がかかる（ブラウザはタイマーを4ミリ秒以上に切り上げることがあるため、それより長くする）
+      setTimeout(() => this.finish('aborted'), 15);
+    }
+    // 試験から呼ぶ：エラーだけを出し、この回は終わらせない
+    errorOnly(error) {
+      this.onerror && this.onerror({ error });
     }
     // 試験から呼ぶ：この回を終わらせる（error を付けると、先に onerror を出す）
     finish(error) {
@@ -83,6 +95,53 @@ function makeVoice(fakes, extra = {}) {
 }
 
 export async function voiceTests(check) {
+  {
+    const f = makeFakes();
+    const { voice, logs } = makeVoice(f);
+    voice.start();
+    voice.start();
+    await wait(5);
+    voice.start();
+    await wait(20);
+    check('音声：開始を何度呼んでも1回だけ', [f.env.sessions.length, f.env.running, f.env.overlaps], [1, 1, 0]);
+    check('音声：開始済みの呼び出しは記録して無視', logs.filter((l) => l.includes('開始済み')).length, 2);
+    voice.stop();
+  }
+  {
+    const f = makeFakes();
+    const { voice, logs, fatal } = makeVoice(f);
+    voice.start();
+    await wait(20);
+    const first = f.env.current();
+    first.errorOnly('audio-capture');
+    await wait(30); // 解放（15ミリ秒）の後、取り直し（さらに40ミリ秒後）の前
+    check('音声：audio-capture でマイクを解放する', [f.env.aborts, first.state, f.env.running], [1, 'ended', 0]);
+    check('音声：解放のための aborted は記録しない', logs.filter((l) => l.includes('aborted')), []);
+    await wait(60);
+    check('音声：解放のあと少し待って1回だけ取り直す', [f.env.running, f.env.sessions.length, fatal.length, f.env.overlaps], [1, 2, 0, 0]);
+    voice.stop();
+  }
+  {
+    const f = makeFakes();
+    const { voice, fatal } = makeVoice(f);
+    voice.start();
+    await wait(20);
+    f.env.silentAbort = true;
+    f.env.current().errorOnly('audio-capture');
+    await wait(30);
+    check('音声：終わりの知らせが来なくても、まだ取り直さない', f.env.sessions.length, 1);
+    await wait(100);
+    check('音声：終わりの知らせが来ないときも、上限のあと1回だけ取り直す', [f.env.running, f.env.sessions.length, fatal.length, f.env.overlaps], [1, 2, 0, 0]);
+    voice.stop();
+  }
+  {
+    const f = makeFakes();
+    const { voice, logs } = makeVoice(f);
+    voice.start();
+    await wait(450);
+    check('音声：終わらない聞き取りは取り直す', [f.env.aborts >= 1, f.env.running, f.env.overlaps, logs.some((l) => l.includes('終わらない'))], [true, 1, 0, true]);
+    voice.stop();
+  }
   {
     const f = makeFakes();
     const { voice, heard } = makeVoice(f);

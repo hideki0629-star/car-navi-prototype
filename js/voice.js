@@ -5,13 +5,16 @@
 //   ・止めるときは abort し、onend が来るのを待ってから次の動作に移る。
 //   ・聞き取りは一回ごとに新しく作り、前の回の知らせ（onend など）は無視する。
 // 読み上げの間は聞き取りを止め、読み上げが終わってから再開する。
-// aborted・audio-capture のときは、少し待って1回だけ再開する。続けて失敗したら onFatal で知らせる。
+// aborted・audio-capture のときは、マイクの取得を一度解放し（abort して、その回を捨てる）、
+// 少し待って1回だけ取り直す。続けて失敗したら onFatal で知らせる。
+// 開始（start）は1回だけ。開始済みのときに呼ばれても無視する。
 // 画面が裏に回ったら聞き取りを止め、本当に裏に回っていた場合だけ、戻ったときに再開する。
 
 const DEFAULT_TIMING = {
   restartMs: 300,       // ふつうに終わったあと、次を始めるまで
   errorRetryMs: 1000,   // aborted・audio-capture のあと、再開するまで
   abortWaitMs: 1000,    // 止めてから onend が来るのを待つ上限
+  sessionMaxMs: 20000,  // 一回の聞き取りがこれより長く終わらなければ、取り直す
   speakGuardMs: 4000,   // 読み上げの終わりの知らせが来ないときの見積もり（基本）
   speakPerCharMs: 400,  // 同（1文字あたり）
 };
@@ -49,6 +52,10 @@ export class Voice {
 
   // 開始ボタンの押下（利用者の操作）の中で呼ぶ。Safariは最初の再生・認識に操作が必要なため
   start() {
+    if (this.active) {
+      this.onLog('開始：開始済みのため無視');
+      return;
+    }
     this.active = true;
     this.errorRetried = false;
     this.pickVoice();
@@ -111,7 +118,31 @@ export class Voice {
     rec.continuous = false;
     rec.interimResults = false;
     rec.maxAlternatives = 1;
-    let error = null;
+    let error = null;        // この回で最初に起きたエラー
+    let releasing = false;   // エラーのあと、こちらからマイクを解放している
+    let releaseTimer = null;
+    let maxTimer = null;
+
+    // この回を終える（onend が来たとき、または来ないまま上限になったとき）
+    const endSession = () => {
+      if (rec !== this.rec) return;
+      clearTimeout(releaseTimer);
+      clearTimeout(maxTimer);
+      const wasSelfAbort = this.selfAbort;
+      this.rec = null;
+      this.recStarted = false;
+      this.selfAbort = false;
+      this.emitState();
+      this.endWaiters.splice(0).forEach((resolve) => resolve());
+      this.afterSession(wasSelfAbort ? null : error);
+    };
+
+    // マイクの取得を解放する：abort して、onend が来なくても上限でこの回を捨てる
+    const release = () => {
+      releasing = true;
+      try { rec.abort(); } catch (e) { /* すでに止まっていれば onend を待つ */ }
+      releaseTimer = setTimeout(endSession, this.t.abortWaitMs);
+    };
 
     rec.onstart = () => {
       if (rec !== this.rec) return;
@@ -129,27 +160,28 @@ export class Voice {
     };
     rec.onerror = (event) => {
       if (rec !== this.rec) return;
-      error = event.error;
-      if (error === 'aborted' && this.selfAbort) return; // こちらから止めたもの
-      if (error === 'no-speech') return;                  // 黙っていただけ。ふつうに再開する
-      this.onLog(`認識エラー: ${error}`);
+      const e = event.error;
+      if (e === 'aborted' && (this.selfAbort || releasing)) return; // こちらから止めたもの
+      if (e === 'no-speech') return;                                // 黙っていただけ。ふつうに再開する
+      this.onLog(`認識エラー: ${e}`);
+      if (!error) error = e; // 最初のエラーで次の動きを決める（後に続く aborted で上書きしない）
+      if (RETRY_ONCE_ERRORS.includes(e) && !releasing && !this.selfAbort) {
+        this.onLog('マイクを解放して、少し待って取り直します');
+        release();
+      }
     };
-    rec.onend = () => {
-      if (rec !== this.rec) return;
-      const wasSelfAbort = this.selfAbort;
-      this.rec = null;
-      this.recStarted = false;
-      this.selfAbort = false;
-      this.emitState();
-      const waiters = this.endWaiters.splice(0);
-      waiters.forEach((resolve) => resolve());
-      this.afterSession(wasSelfAbort ? null : error);
-    };
+    rec.onend = endSession;
 
     this.rec = rec;
     this.selfAbort = false;
     try {
       rec.start();
+      // 終わりの知らせが来ないまま止まった場合に備え、長すぎる回は取り直す
+      maxTimer = setTimeout(() => {
+        if (rec !== this.rec || releasing || this.selfAbort) return;
+        this.onLog('聞き取りが終わらないため、取り直します');
+        release();
+      }, this.t.sessionMaxMs);
     } catch (e) {
       // 「すでに始まっている」などで始められなかった。この回は無かったことにして、少し待って1回だけやり直す
       this.rec = null;
