@@ -50,3 +50,9 @@ python -m http.server 8765
 - 試験：http://localhost:8765/tests/ （「108件中 108件 合格」と出れば合格）
 
 iPhone・iPadのSafariでマイクを使うにはHTTPSが必要なため、実機での試験は GitHub Pages の公開アドレス（https://hideki0629-star.github.io/car-navi-prototype/）で行う。
+
+## 別ページ：端末内の音声認識 試作
+
+`speech-lab/` は、本体とは別の試作ページです（sherpa-onnx の WebAssembly 版で、端末の中だけで日本語を聞き取る）。詳しくは `speech-lab/README.md`。
+
+- https://hideki0629-star.github.io/car-navi-prototype/speech-lab/

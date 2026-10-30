@@ -1,0 +1,25 @@
+{
+  "sherpaOnnx": "1.12.0",
+  "package": "sherpa-onnx-wasm-simd-1.12.0-vad-asr-ja-zipformer_reazonspeech",
+  "wasm": {
+    "file": "sherpa-onnx-wasm-main-vad-asr.wasm",
+    "size": 11534134,
+    "sha256": "eaad6a5338eb35804abb58112335d334bfb324eb1b1baa48c26836c0d183d9ce"
+  },
+  "data": {
+    "size": 170988221,
+    "sha256": "9ab7ab1e96583eb9887a4d2fade566acba9a94bd0f3b97aed1605cf71f103b9f",
+    "parts": [
+      {
+        "file": "sherpa-onnx-wasm-main-vad-asr.data.part1",
+        "size": 85494111,
+        "sha256": "fa8753a9eaefca5f269745a8556f9996d50c6766647065ff04f26bed259a25bb"
+      },
+      {
+        "file": "sherpa-onnx-wasm-main-vad-asr.data.part2",
+        "size": 85494110,
+        "sha256": "a165028bf7ddbdb9c6212814db49aea6a09c301427306f9ed56a4aec02619da7"
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- このページは同じサイト（自分の公開ページ）以外とは通信しない。音声や文字を端末の外へ送れないようにする -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; worker-src 'self' blob:">
+  <title>端末内の音声認識 試作</title>
+  <style>
+    :root { --bg: #000; --fg: #fff; --muted: #9aa0a6; --accent: #1e88e5; --ok: #43a047; --warn: #fb8c00; --ng: #e53935; --panel: #15181c; --line: #2a2f35; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif; -webkit-text-size-adjust: 100%; }
+    main { max-width: 760px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+    h1 { font-size: 22px; margin: 8px 0 4px; }
+    .note { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+    .buttons { display: grid; gap: 12px; }
+    button.big { font: inherit; font-size: 24px; font-weight: 700; padding: 22px 16px; border: none; border-radius: 16px; background: var(--accent); color: #fff; cursor: pointer; }
+    button.big:disabled { background: var(--line); color: var(--muted); cursor: default; }
+    button.big.listening { background: var(--ok); }
+    .status { font-size: 20px; font-weight: 700; margin: 16px 0 8px; min-height: 1.4em; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 12px 0; }
+    .card h2 { font-size: 15px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+    .result { font-size: 28px; font-weight: 700; min-height: 1.3em; overflow-wrap: anywhere; }
+    .metrics { font-size: 15px; line-height: 1.7; margin-top: 6px; }
+    .progress { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin-top: 8px; }
+    .progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+    pre.log { font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; margin: 0; color: #cfd3d7; }
+    .log .ng { color: var(--ng); }
+    .small { font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: #000; color: var(--fg); cursor: pointer; }
+    a { color: #90caf9; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>端末内の音声認識 試作</h1>
+    <p class="note">
+      sherpa-onnx（WebAssembly版）で、聞き取り（音声区間の検出＋音声認識）を、この端末の中だけで行います。
+      音声も文字も端末の外へは送りません（このページは自分の公開ページ以外と通信できない設定です）。
+      最初の聞き取りの試験で、モデル（約183 MB）をこのページから読み込みます。モバイル通信のときはご注意ください。
+    </p>
+
+    <div class="buttons">
+      <button id="asr" class="big" type="button">聞き取りの試験</button>
+      <button id="tts" class="big" type="button" disabled>読み上げの試験（今回は作っていません）</button>
+    </div>
+
+    <div id="status" class="status">ボタンを押してください</div>
+    <div id="progress" class="progress" hidden><div></div></div>
+
+    <div class="card">
+      <h2>聞き取った言葉</h2>
+      <div id="result" class="result">―</div>
+      <div id="metrics" class="metrics"></div>
+    </div>
+
+    <div class="card">
+      <h2>記録（新しい順） <button id="copy" class="small" type="button">記録をコピー</button></h2>
+      <pre id="log" class="log"></pre>
+    </div>
+
+    <div class="card">
+      <h2>使っているもの</h2>
+      <p class="note">
+        sherpa-onnx v1.12.0（Apache-2.0）／ 音声認識モデル reazonspeech-k2-v2（Apache-2.0）／
+        音声区間の検出 silero-vad（MIT）。詳しくは <a href="README.md">README.md</a>。
+        読み上げは、日本語に対応した軽いモデルの利用条件を確かめてから作ります。
+      </p>
+    </div>
+  </main>
+  <script src="lab.js"></script>
+</body>
+</html>
