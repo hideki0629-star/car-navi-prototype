@@ -1,0 +1,25 @@
+{
+  "name": "piper-plus-wasm",
+  "type": "module",
+  "collaborators": [
+    "ayousanz"
+  ],
+  "description": "WASM phonemizer for Piper Plus TTS — 8-language G2P with bundled NAIST-JDIC dictionary",
+  "version": "0.5.2",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ayutaz/piper-plus"
+  },
+  "files": [
+    "piper_plus_wasm_bg.wasm",
+    "piper_plus_wasm.js",
+    "piper_plus_wasm.d.ts"
+  ],
+  "main": "piper_plus_wasm.js",
+  "homepage": "https://github.com/ayutaz/piper-plus",
+  "types": "piper_plus_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

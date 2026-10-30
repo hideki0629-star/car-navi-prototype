@@ -1,0 +1,74 @@
+{
+  "name": "@piper-plus/g2p",
+  "version": "0.4.2",
+  "description": "Multilingual G2P (Grapheme-to-Phoneme) for TTS — eSpeak-ng free, MIT licensed",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test test/test-encode.js test/test-english.js test/test-g2p.js test/test-g2p-contract.js test/test-g2p-integration.js test/test-languages.js test/test-detect.js test/test-swedish-lid-matrix.js test/test-pua-map.js test/test-swedish.js test/test-korean.js test/test-custom-dict.js test/test-strict-mode.js test/test-spanish.js test/test-french.js test/test-portuguese.js test/test-chinese.js test/test-chinese-zh-en.js test/test-latin-common.js test/test-exports.js test/test-g2p-golden.js test/test-ssml.js test/test-package-metadata.js",
+    "test:coverage": "c8 --reporter=lcov --reporter=text npm test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "check:types": "tsc --noEmit --declaration",
+    "prepublishOnly": "npm run check:types && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@types/node": "^25.0.0",
+    "c8": "^11.0.0",
+    "eslint": "^9.10.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./ja": "./src/ja/index.js",
+    "./en": "./src/en/index.js",
+    "./zh": "./src/zh/index.js",
+    "./es": "./src/es/index.js",
+    "./fr": "./src/fr/index.js",
+    "./pt": "./src/pt/index.js",
+    "./sv": "./src/sv/index.js",
+    "./ko": "./src/ko/index.js",
+    "./detect": "./src/detect.js",
+    "./dict": "./src/dict-loader.js",
+    "./custom-dict": "./src/custom-dictionary.js",
+    "./encode": "./src/encode.js",
+    "./ssml": "./src/ssml.js"
+  },
+  "files": [
+    "src/**/*.js",
+    "data/sv_function_words.json",
+    "types/",
+    "CHANGELOG.md",
+    "LICENSE.md"
+  ],
+  "types": "types/index.d.ts",
+  "keywords": [
+    "g2p",
+    "grapheme-to-phoneme",
+    "tts",
+    "text-to-speech",
+    "phoneme",
+    "ipa",
+    "japanese",
+    "multilingual",
+    "wasm"
+  ],
+  "license": "MIT",
+  "author": "ayousanz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ayutaz/piper-plus",
+    "directory": "src/wasm/g2p"
+  },
+  "homepage": "https://github.com/ayutaz/piper-plus/tree/dev/src/wasm/g2p#readme",
+  "bugs": "https://github.com/ayutaz/piper-plus/issues",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "pua_compat_version": 1
+}
