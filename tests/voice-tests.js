@@ -1,13 +1,14 @@
 // 聞き取りと読み上げ（voice.js）の試験。端末の音声認識・読み上げは偽物に替える。
 // 偽の音声認識は iPhoneのSafariと同じく、前の回が終わる前に次を始めると例外を出す。
+// requireGesture のときは、利用者の操作の中で一度始めるまで、start() しても何の知らせも出さない（iPhoneで見られた症状）。
 
 import { Voice } from '../js/voice.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const TIMING = { restartMs: 5, errorRetryMs: 40, abortWaitMs: 60, sessionMaxMs: 400, speakGuardMs: 300, speakPerCharMs: 0 };
+const TIMING = { restartMs: 5, errorRetryMs: 40, abortWaitMs: 60, sessionMaxMs: 400, startTimeoutMs: 100, speakGuardMs: 300, speakPerCharMs: 0 };
 
 function makeFakes() {
-  const env = { sessions: [], running: 0, overlaps: 0, aborts: 0, silentAbort: false, spoken: [], micDuringSpeech: 0, synthSpeaking: false };
+  const env = { sessions: [], running: 0, overlaps: 0, aborts: 0, silentAbort: false, requireGesture: false, inGesture: false, unlocked: false, neverStart: false, spoken: [], micDuringSpeech: 0, synthSpeaking: false };
 
   class FakeRecognition {
     constructor() {
@@ -22,6 +23,8 @@ function makeFakes() {
       if (env.synthSpeaking) env.micDuringSpeech += 1;
       this.state = 'running';
       env.running += 1;
+      if (env.neverStart || (env.requireGesture && !env.inGesture && !env.unlocked)) return; // 何の知らせも出さない
+      env.unlocked = true;
       setTimeout(() => this.onstart && this.onstart(), 0);
     }
     abort() {
@@ -96,6 +99,42 @@ function makeVoice(fakes, extra = {}) {
 
 export async function voiceTests(check) {
   {
+    // iPhoneと同じく、操作の中で始めないと聞き取りが始まらない偽物で試す
+    const f = makeFakes();
+    f.env.requireGesture = true;
+    const { voice, logs, heard } = makeVoice(f);
+    f.env.inGesture = true;
+    const ready = voice.start();
+    const syncSessions = f.env.sessions.length;
+    f.env.inGesture = false;
+    check('音声：開始ボタンの処理の中で、その場で聞き取りを始める', syncSessions, 1);
+    const ok = await ready;
+    check('音声：開始は onstart を待ってから true で終わる', [ok, voice.recStarted], [true, true]);
+    await voice.speak('開始しました。行き先を言ってください。');
+    await wait(30);
+    f.env.current().say('〇〇駅までナビして');
+    await wait(30);
+    check('音声：操作の中で始めたあとは、読み上げのあとも聞き取れる', heard, ['〇〇駅までナビして']);
+    const kinds = ['start()', 'onstart', 'onresult（認識）: 〇〇駅までナビして', 'onend'];
+    check('音声：知らせを回の番号つきで記録', kinds.map((k) => logs.some((l) => /^聞き取り#\d+ /.test(l) && l.includes(k))), [true, true, true, true]);
+    voice.stop();
+  }
+  {
+    const f = makeFakes();
+    f.env.neverStart = true;
+    const { voice, logs, fatal } = makeVoice(f);
+    const ready = voice.start();
+    const ok = await ready;
+    check('音声：onstart が来なければ、開始は false で終わる', ok, false);
+    await wait(300);
+    check('音声：onstart が来ないときは記録して1回だけ取り直し、だめなら知らせる', [
+      logs.filter((l) => l.includes('onstart が来ません')).length,
+      f.env.sessions.length,
+      fatal.length === 1 && fatal[0].includes('始まりません'),
+    ], [2, 2, true]);
+    voice.stop();
+  }
+  {
     const f = makeFakes();
     const { voice, logs } = makeVoice(f);
     voice.start();
@@ -116,7 +155,7 @@ export async function voiceTests(check) {
     first.errorOnly('audio-capture');
     await wait(30); // 解放（15ミリ秒）の後、取り直し（さらに40ミリ秒後）の前
     check('音声：audio-capture でマイクを解放する', [f.env.aborts, first.state, f.env.running], [1, 'ended', 0]);
-    check('音声：解放のための aborted は記録しない', logs.filter((l) => l.includes('aborted')), []);
+    check('音声：解放のための aborted は「こちらから止めたもの」と記録', logs.filter((l) => l.includes('aborted') && !l.includes('こちらから止めたもの')), []);
     await wait(60);
     check('音声：解放のあと少し待って1回だけ取り直す', [f.env.running, f.env.sessions.length, fatal.length, f.env.overlaps], [1, 2, 0, 0]);
     voice.stop();
@@ -164,7 +203,7 @@ export async function voiceTests(check) {
     await wait(30);
     check('音声：読み上げ中にマイクを使わない', f.env.micDuringSpeech, 0);
     check('音声：読み上げのあと聞き取りを一つだけ再開', [f.env.running, f.env.overlaps], [1, 0]);
-    check('音声：こちらから止めたときの aborted は記録しない', logs.filter((l) => l.includes('aborted')), []);
+    check('音声：こちらから止めたときの aborted は「こちらから止めたもの」と記録', logs.filter((l) => l.includes('aborted') && !l.includes('こちらから止めたもの')), []);
   }
   {
     const f = makeFakes();

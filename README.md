@@ -47,6 +47,6 @@ python -m http.server 8765
 ```
 
 - 本体：http://localhost:8765/ （パソコンのChromeかEdgeなら音声認識も試せる）
-- 試験：http://localhost:8765/tests/ （「93件中 93件 合格」と出れば合格）
+- 試験：http://localhost:8765/tests/ （「99件中 99件 合格」と出れば合格）
 
 iPhone・iPadのSafariでマイクを使うにはHTTPSが必要なため、実機での試験は GitHub Pages の公開アドレス（https://hideki0629-star.github.io/car-navi-prototype/）で行う。

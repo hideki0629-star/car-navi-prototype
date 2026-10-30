@@ -77,25 +77,36 @@ $('start').addEventListener('click', async () => {
   $('start').hidden = true;
   $('start').disabled = true;
   $('main').hidden = false;
-  location.startWatching();
-  keepAwake();
   const support = isSupported();
   if (!support.recognition) {
+    location.startWatching();
     setStatus('音声認識なし');
     $('reply').textContent = 'このブラウザは音声認識に対応していません。設定の「文字で試す」で動作を確かめられます。';
     return;
   }
-  voice.start();
+  // 聞き取りは、この押下の処理の中で（await より前に）始める。iPhoneでは操作の外では始められないため
+  const ready = voice.start();
+  setStatus('準備中');
+  keepAwake();
+  const ok = await ready;
+  log(ok ? '開始：聞き取りが始まりました' : '開始：聞き取りが始まりませんでした');
+  // 位置情報の許可は、マイクの許可と重ならないよう、聞き取りが始まってから求める
+  location.startWatching();
+  if (!voice.active) return; // 始まらず止まった（onFatal で知らせ済み）
   setStatus('聞き取り中');
+  // 読み上げの前に聞き取りを止め、読み上げのあとに再開する（voice.js）
   await speak('開始しました。行き先を言ってください。');
 });
 
-$('resume').addEventListener('click', () => {
+$('resume').addEventListener('click', async () => {
   if (voice.active) return; // 聞き取りが動いているときは何もしない
   $('resume').hidden = true;
-  voice.start();
+  const ready = voice.start(); // この押下の処理の中で始める
+  setStatus('準備中');
+  await ready;
+  if (!voice.active) return;
   setStatus('聞き取り中');
-  speak('聞き取りを再開しました。');
+  await speak('聞き取りを再開しました。');
 });
 
 $('stop').addEventListener('click', () => {

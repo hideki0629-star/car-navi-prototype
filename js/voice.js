@@ -8,6 +8,9 @@
 // aborted・audio-capture のときは、マイクの取得を一度解放し（abort して、その回を捨てる）、
 // 少し待って1回だけ取り直す。続けて失敗したら onFatal で知らせる。
 // 開始（start）は1回だけ。開始済みのときに呼ばれても無視する。
+// 最初の聞き取りは、開始ボタンの操作の中で直接始める（iPhoneのSafariは、操作の外では
+// マイクを使い始められないとみられるため。タイマーで後回しにすると聞き取りが一度も始まらなかった）。
+// 聞き取りの知らせ（onstart・onaudiostart・onspeechstart・onresult・onerror・onend）は、回の番号つきで記録する。
 // 画面が裏に回ったら聞き取りを止め、本当に裏に回っていた場合だけ、戻ったときに再開する。
 
 const DEFAULT_TIMING = {
@@ -15,6 +18,7 @@ const DEFAULT_TIMING = {
   errorRetryMs: 1000,   // aborted・audio-capture のあと、再開するまで
   abortWaitMs: 1000,    // 止めてから onend が来るのを待つ上限
   sessionMaxMs: 20000,  // 一回の聞き取りがこれより長く終わらなければ、取り直す
+  startTimeoutMs: 5000, // start() のあと、これまでに onstart が来なければ「始まらない」とみなす
   speakGuardMs: 4000,   // 読み上げの終わりの知らせが来ないときの見積もり（基本）
   speakPerCharMs: 400,  // 同（1文字あたり）
 };
@@ -47,21 +51,37 @@ export class Voice {
     this.errorRetried = false; // aborted・audio-capture の再開を1回使った
     this.timer = null;       // 次の開始の予定（常に一つだけ）
     this.endWaiters = [];    // 聞き取りが止まるのを待っている処理
+    this.seq = 0;            // 聞き取りの回の番号（記録用）
+    this.firstStart = null;  // start() が返す Promise を、最初の onstart で解決する
     this.voice = null;
   }
 
-  // 開始ボタンの押下（利用者の操作）の中で呼ぶ。Safariは最初の再生・認識に操作が必要なため
+  // 開始ボタン・再開ボタンの押下（利用者の操作）の中で、await の前に呼ぶ。
+  // 最初の聞き取りが始まったら（onstart）true、始まらなければ false で解決する
   start() {
     if (this.active) {
       this.onLog('開始：開始済みのため無視');
-      return;
+      return Promise.resolve(false);
     }
     this.active = true;
     this.errorRetried = false;
     this.pickVoice();
     // 読み上げの許可を得るため、操作の中で一度だけ空の読み上げをする
     try { this.synth && this.synth.speak(new this.Utterance('')); } catch (e) { /* 読み上げが無い端末では何もしない */ }
-    this.requestListen(0);
+    const ready = new Promise((resolve) => {
+      this.firstStart = resolve;
+      setTimeout(() => this.resolveFirstStart(false), this.t.startTimeoutMs + 100);
+    });
+    this.clearTimer();
+    this.startSession(); // タイマーを使わず、操作の中で直接始める
+    if (!this.rec) this.resolveFirstStart(false);
+    return ready;
+  }
+
+  resolveFirstStart(ok) {
+    const resolve = this.firstStart;
+    this.firstStart = null;
+    if (resolve) resolve(ok);
   }
 
   stop() {
@@ -122,12 +142,17 @@ export class Voice {
     let releasing = false;   // エラーのあと、こちらからマイクを解放している
     let releaseTimer = null;
     let maxTimer = null;
+    let startTimer = null;
+    const id = ++this.seq;
+    const log = (m) => this.onLog(`聞き取り#${id} ${m}`);
 
     // この回を終える（onend が来たとき、または来ないまま上限になったとき）
     const endSession = () => {
       if (rec !== this.rec) return;
       clearTimeout(releaseTimer);
       clearTimeout(maxTimer);
+      clearTimeout(startTimer);
+      if (!this.recStarted) this.resolveFirstStart(false);
       const wasSelfAbort = this.selfAbort;
       this.rec = null;
       this.recStarted = false;
@@ -141,41 +166,74 @@ export class Voice {
     const release = () => {
       releasing = true;
       try { rec.abort(); } catch (e) { /* すでに止まっていれば onend を待つ */ }
-      releaseTimer = setTimeout(endSession, this.t.abortWaitMs);
+      releaseTimer = setTimeout(() => {
+        if (rec === this.rec) log('onend が来ないため、この回を打ち切り');
+        endSession();
+      }, this.t.abortWaitMs);
     };
 
     rec.onstart = () => {
       if (rec !== this.rec) return;
+      log('onstart（聞き取り開始）');
+      clearTimeout(startTimer);
       this.recStarted = true;
       this.emitState();
+      this.resolveFirstStart(true);
+    };
+    rec.onaudiostart = () => {
+      if (rec === this.rec) log('onaudiostart（マイクの音が入り始めた）');
+    };
+    rec.onspeechstart = () => {
+      if (rec === this.rec) log('onspeechstart（声を検出）');
     };
     rec.onresult = (event) => {
       if (rec !== this.rec) return;
       const result = event.results[event.results.length - 1];
-      if (!result || !result.isFinal) return;
+      if (!result) {
+        log('onresult（結果が空）');
+        return;
+      }
+      const text = result[0] ? result[0].transcript : '';
+      log(`onresult（認識${result.isFinal ? '' : '・途中'}）: ${text}`);
+      if (!result.isFinal) return;
       this.errorRetried = false;
-      const text = result[0].transcript;
-      this.onLog(`認識: ${text}`);
       this.onResult(text);
     };
     rec.onerror = (event) => {
       if (rec !== this.rec) return;
       const e = event.error;
-      if (e === 'aborted' && (this.selfAbort || releasing)) return; // こちらから止めたもの
-      if (e === 'no-speech') return;                                // 黙っていただけ。ふつうに再開する
-      this.onLog(`認識エラー: ${e}`);
+      if (e === 'aborted' && (this.selfAbort || releasing)) {
+        log('onerror: aborted（こちらから止めたもの）');
+        return;
+      }
+      if (e === 'no-speech') {
+        log('onerror: no-speech（声が無かった）');
+        return; // 黙っていただけ。ふつうに再開する
+      }
+      log(`onerror: ${e}`);
       if (!error) error = e; // 最初のエラーで次の動きを決める（後に続く aborted で上書きしない）
       if (RETRY_ONCE_ERRORS.includes(e) && !releasing && !this.selfAbort) {
-        this.onLog('マイクを解放して、少し待って取り直します');
+        log('マイクを解放して、少し待って取り直します');
         release();
       }
     };
-    rec.onend = endSession;
+    rec.onend = () => {
+      if (rec === this.rec) log('onend（聞き取り終了）');
+      endSession();
+    };
 
     this.rec = rec;
     this.selfAbort = false;
     try {
+      log('start()');
       rec.start();
+      // start() のあと onstart が来なければ、始まらなかったとみなして1回だけ取り直す
+      startTimer = setTimeout(() => {
+        if (rec !== this.rec || this.recStarted || releasing || this.selfAbort) return;
+        log('onstart が来ません（聞き取りが始まりません）');
+        if (!error) error = 'no-start';
+        release();
+      }, this.t.startTimeoutMs);
       // 終わりの知らせが来ないまま止まった場合に備え、長すぎる回は取り直す
       maxTimer = setTimeout(() => {
         if (rec !== this.rec || releasing || this.selfAbort) return;
@@ -185,7 +243,7 @@ export class Voice {
     } catch (e) {
       // 「すでに始まっている」などで始められなかった。この回は無かったことにして、少し待って1回だけやり直す
       this.rec = null;
-      this.onLog(`認識の開始に失敗: ${e.message}`);
+      log(`start() に失敗: ${e.message}`);
       this.afterSession('start-failed');
     }
   }
@@ -200,11 +258,15 @@ export class Voice {
       this.onFatal('マイクが使えません。設定でマイクを許可してから、もう一度開始してください。');
       return;
     }
-    if (error && (RETRY_ONCE_ERRORS.includes(error) || error === 'start-failed')) {
+    if (error && (RETRY_ONCE_ERRORS.includes(error) || error === 'start-failed' || error === 'no-start')) {
       if (this.errorRetried) {
         this.active = false;
         this.clearTimer();
-        this.onFatal('聞き取りを再開できませんでした。停車してから、画面の再開ボタンを押してください。');
+        this.resolveFirstStart(false);
+        // 再開ボタンの押下は利用者の操作なので、その中でなら聞き取りを始められる見込み
+        this.onFatal(error === 'no-start'
+          ? '聞き取りが始まりません。停車してから、画面の再開ボタンを押してください。'
+          : '聞き取りを再開できませんでした。停車してから、画面の再開ボタンを押してください。');
         return;
       }
       this.errorRetried = true;
