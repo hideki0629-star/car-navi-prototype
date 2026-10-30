@@ -1,0 +1,161 @@
+/* 車内で見やすいよう、黒地に大きな文字。走行中に読むのは状態の表示だけを想定する */
+
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --muted: #9aa0a6;
+  --accent: #1e88e5;
+  --ok: #43a047;
+  --warn: #fb8c00;
+  --panel: #15181c;
+  --line: #2a2f35;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* 開始ボタン：画面いっぱい */
+.start {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+}
+.start-label { font-size: clamp(64px, 18vw, 160px); font-weight: 800; letter-spacing: 0.1em; }
+.start-note { font-size: clamp(18px, 4vw, 28px); line-height: 1.5; }
+
+main {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.topbar {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  display: flex;
+  gap: 8px;
+}
+.small {
+  font-size: 16px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.status { font-size: clamp(48px, 13vw, 120px); font-weight: 800; line-height: 1.1; }
+.status[data-kind="confirm"] { color: var(--warn); }
+.status[data-kind="go"] { color: var(--ok); }
+
+.mic {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.mic.on { background: var(--ok); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+.lines { width: 100%; max-width: 900px; }
+.line {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: center;
+  font-size: clamp(20px, 5vw, 36px);
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.tag { font-size: 0.6em; color: var(--muted); flex: none; }
+
+.resume {
+  font-size: clamp(28px, 7vw, 56px);
+  font-weight: 700;
+  padding: 24px 48px;
+  border: none;
+  border-radius: 20px;
+  background: var(--warn);
+  color: #000;
+}
+
+.hint { color: var(--muted); font-size: 16px; max-width: 900px; }
+
+/* 設定（停車中だけ） */
+.settings {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  overflow-y: auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px 32px;
+}
+.settings-inner { max-width: 760px; margin: 0 auto; }
+.settings h2 { display: flex; justify-content: space-between; align-items: center; }
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--panel);
+}
+legend { color: var(--muted); padding: 0 6px; }
+fieldset label { display: block; padding: 10px 0; font-size: 18px; }
+fieldset input[type="radio"] { transform: scale(1.4); margin-right: 10px; }
+
+.fav-list { list-style: none; margin: 0; padding: 0; }
+.fav-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 18px;
+}
+.fav-list li:last-child { border-bottom: none; }
+.fav-list .addr { color: var(--muted); font-size: 14px; display: block; }
+
+.type-form { display: flex; gap: 8px; }
+.type-form input {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #000;
+  color: var(--fg);
+}
+
+.log {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin: 0;
+  color: var(--muted);
+}

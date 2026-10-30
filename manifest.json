@@ -1,0 +1,9 @@
+{
+  "name": "車ナビ試作 v0.1",
+  "short_name": "車ナビ試作",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "ja"
+}

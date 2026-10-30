@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="車ナビ試作">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="manifest.json">
+  <title>車ナビ試作 v0.1</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 開始前：画面いっぱいの開始ボタン一つだけ -->
+  <button id="start" class="start" type="button">
+    <span class="start-label">開始</span>
+    <span class="start-note">停車中に一回押してください。<br>あとは声だけで操作します。</span>
+  </button>
+
+  <!-- 開始後：状態を大きな文字で表示 -->
+  <main id="main" hidden>
+    <div class="topbar">
+      <button id="open-settings" type="button" class="small">設定</button>
+      <button id="stop" type="button" class="small">停止</button>
+    </div>
+    <div id="status" class="status">聞き取り中</div>
+    <div id="mic" class="mic" aria-hidden="true"></div>
+    <div class="lines">
+      <p class="line"><span class="tag">聞き取り</span><span id="heard">―</span></p>
+      <p class="line"><span class="tag">返答</span><span id="reply">―</span></p>
+    </div>
+    <button id="resume" type="button" class="resume" hidden>聞き取りを再開</button>
+    <p class="hint">例：「〇〇までナビして」「自宅までナビして」「佐賀県のテーマパークまでナビして」</p>
+  </main>
+
+  <!-- 設定：停車中だけ開ける -->
+  <section id="settings" class="settings" hidden>
+    <div class="settings-inner">
+      <h2>設定 <button id="close-settings" type="button" class="small">閉じる</button></h2>
+
+      <fieldset>
+        <legend>地図アプリ</legend>
+        <label><input type="radio" name="mapApp" value="google"> Googleマップ（アプリ）優先。開けなければAppleマップ</label>
+        <label><input type="radio" name="mapApp" value="google-web"> GoogleマップのURLで開く</label>
+        <label><input type="radio" name="mapApp" value="apple"> Appleマップのみ</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>自宅・職場が未登録のとき</legend>
+        <label><input type="radio" name="homeMode" value="google"> 言葉のままGoogleマップに渡す（Google側の登録を試す）</label>
+        <label><input type="radio" name="homeMode" value="ask"> 声での登録を案内する</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>お気に入りの場所（この端末のブラウザ内にだけ保存）</legend>
+        <ul id="fav-list" class="fav-list"></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>文字で試す（マイクの代わり）</legend>
+        <form id="type-form" class="type-form">
+          <input id="type-input" type="text" placeholder="例：佐賀県のテーマパークまでナビして" autocomplete="off">
+          <button type="submit" class="small">送る</button>
+        </form>
+      </fieldset>
+
+      <fieldset>
+        <legend>記録（新しい順）</legend>
+        <pre id="log" class="log"></pre>
+      </fieldset>
+    </div>
+  </section>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
